@@ -100,6 +100,7 @@ def greedy_partition(findings_by_drug):
             imbalance_S += abs((count_S[label] + finding_counter[label]) - count_T[label])
         
         # Assign to the set that maintains better balance (if both are equal, assign to S)
+        # we want this behaviour because we want the test set to be richer
         if imbalance_T < imbalance_S:
             T.append((drug, findings))
             count_T.update(findings)

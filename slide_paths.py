@@ -63,6 +63,6 @@ organ = 'liver'
 get_slide_full_paths(path_to_parent_dir, output_dir, organ=organ)
 
 
-# output_dir = '/Volumes/temporary/toxicology/TG-GATES/kidney'
-# organ = 'kidney'
-# get_slide_full_paths(path_to_parent_dir, output_dir, organ=organ)
+output_dir = '/Volumes/temporary/toxicology/TG-GATES/kidney'
+organ = 'kidney'
+get_slide_full_paths(path_to_parent_dir, output_dir, organ=organ)

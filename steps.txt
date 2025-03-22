@@ -1,0 +1,4 @@
+1. Use label_all_slides.py to merge the diagnosis csv with the all-slide csv
+2. Use greedy_partition to first generate a list of findings grouped by drug that is then used to create paritions by drug study that aim to maximize the representation by finding
+3. Use get_slides_for_set to create a list of slide paths for each set training T and testing S
+4. The slide paths can then be passed to CLAM etc to extract weights
