@@ -2,15 +2,18 @@ from collections import Counter, defaultdict
 import random
 import csv
 
-def generate_grouped_csv(input_filepath, output_filepath):
+def generate_grouped_csv(input_filepath, output_filepath, input_organ, one_abnormality=False, abnormality="Hypertrophy"):
     """
     Reads a CSV file with headers COMPOUND, FINDING_TYPE, and ORGAN_x, then groups data by COMPOUND
-    filtering only for findings in Kidney or Liver. Writes a new CSV file with each row representing 
-    a compound and its filtered findings.
+    filtering only for findings in Kidney or Liver. Replaces commas in FINDING_TYPE with underscores.
+    If simplify_abnormalities is True, all findings except 'Hypertrophy' and 'No abnormalities' are replaced with 'Other'.
+    Writes a new CSV file with each row representing a compound and its filtered findings.
     
     Parameters:
     input_filepath (str): Path to the input CSV file.
     output_filepath (str): Path to the output grouped CSV file.
+    input_organ (str): Organ to filter for (e.g. "Kidney" or "Liver").
+    one_abnormality (bool): creates a grouping of {abnormality}, "other", and "no findings", where abnormality is specified by the user.
     """
     grouped_data = defaultdict(list)
     
@@ -18,9 +21,11 @@ def generate_grouped_csv(input_filepath, output_filepath):
         reader = csv.DictReader(csvfile)
         for row in reader:
             organ = row["ORGAN_x"].strip()
-            if organ in {"Kidney"}:  # Filter for Kidney and Liver
+            if organ in {input_organ}:  # Filter for Kidney and Liver
                 compound = row["COMPOUND_NAME_x"].strip()
                 finding = row["FINDING_TYPE"].strip().replace(",", "_")  # Replace commas with underscores
+                if one_abnormality and finding not in {abnormality, "no abnormalities"}:
+                    finding = "Other"
                 grouped_data[compound].append(finding)
     
     with open(output_filepath, "w", newline='') as csvfile:
@@ -111,9 +116,10 @@ def greedy_partition(findings_by_drug):
     return T, S, count_T, count_S
 
 # Generate grouped CSV
-input_filepath = "/Volumes/temporary/salma/Experiments/TG-GATES_OOD/merged_output.csv"  # Update with actual input CSV file path
-output_filepath = "/Volumes/temporary/salma/Experiments/TG-GATES_OOD/abnormalities_per_group.csv"
-generate_grouped_csv(input_filepath, output_filepath)
+base_dir = "/Volumes/temporary/salma/Experiments/TG-GATES_Hypertrophy"
+input_filepath = base_dir + "/merged_output_2.csv"  # Update with actual input CSV file path
+output_filepath = base_dir + "/abnormalities_per_group.csv"
+generate_grouped_csv(input_filepath, output_filepath, "Liver", one_abnormality=True, abnormality="Hypertrophy")
 
 # Experiment with 100 random seeds
 data = read_csv(output_filepath)
@@ -140,7 +146,7 @@ for seed in range(1000):
     seed_idx = seed_idx + 1
     
 
-with open("/Volumes/temporary/salma/Experiments/TG-GATES_OOD/partition_scores.txt", "w") as f:
+with open(base_dir + "/partition_scores.txt", "w") as f:
     for seed, score, T, S in results:
         f.write(f"Seed: {seed}, Score: {score}\n")
 
@@ -148,16 +154,16 @@ T_drugs = dict(results[best_score_idx][2]).keys()
 S_drugs = dict(results[best_score_idx][3]).keys()
 
 # write drug lists to csv
-with open("/Volumes/temporary/salma/Experiments/TG-GATES_OOD/T_drugs.csv", "w") as f:
+with open(base_dir + "/T_drugs.csv", "w") as f:
     for drug in T_drugs:
         f.write(f"{drug}\n")
-with open("/Volumes/temporary/salma/Experiments/TG-GATES_OOD/S_drugs.csv", "w") as f:
+with open(base_dir + "/S_drugs.csv", "w") as f:
     for drug in S_drugs:
         f.write(f"{drug}\n")
 
 
 # Write best counts to CSV
-with open("/Volumes/temporary/salma/Experiments/TG-GATES_OOD/best_counts.csv", "w", newline='') as csvfile:
+with open(base_dir + "/best_counts.csv", "w", newline='') as csvfile:
     writer = csv.writer(csvfile)
     writer.writerow(["Label", "T Count", "S Count"])
     for label in set(best_count_T.keys()).union(set(best_count_S.keys())):
