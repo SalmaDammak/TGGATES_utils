@@ -57,12 +57,13 @@ def get_slide_full_paths(path_to_parent_dir, output_dir, organ=None):
     return slide_full_paths
 
 # Example usage
-path_to_parent_dir = '/Volumes/RBS_PA_CPGARCHIVE/archives/toxicology/open-tg-gates/images'
-output_dir = '/Volumes/temporary/toxicology/TG-GATES/liver'
+base = "data" #Volumes
+path_to_parent_dir = "/" + base + "/RBS_PA_CPGARCHIVE/archives/toxicology/open-tg-gates/images"
+output_dir = "/" + base + "temporary/toxicology/TG-GATES/liver"
 organ = 'liver'
 get_slide_full_paths(path_to_parent_dir, output_dir, organ=organ)
 
 
-output_dir = '/Volumes/temporary/toxicology/TG-GATES/kidney'
+output_dir = "/" + base + "temporary/toxicology/TG-GATES/kidney"
 organ = 'kidney'
 get_slide_full_paths(path_to_parent_dir, output_dir, organ=organ)
