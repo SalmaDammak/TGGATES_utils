@@ -1,0 +1,159 @@
+"""
+The TG-GATES metadata files can be downloaded here: https://dbarchive.biosciencedbc.jp/en/open-tggates/download.html
+Information on their columns can be found by clicking each raw data files which leads to an html page with explanations of the columns.
+"""
+
+
+import pandas as pd
+
+def clean_raw_metadata_csv(file_path, output_dir=None, save=True):
+
+    
+    # Read file - use latin 1 (ISO-8859-1) encoding because some compound names have commas 
+    # in them (e.g., "2,4-dinitrophenol", "imatinib, methanesulfonate salt"). This stops those
+    # commas from being read as delimeters.
+    df = pd.read_csv(file_path, encoding='ISO-8859-1')
+
+
+    # # Change special chachters in compound names to get the corresponding folder names 
+    # # (e.g. "1% cholesterol + 0.25% sodium cholate" is "1%25_cholesterol_%2B_0.25%25_sodium_cholate")
+    # compound_folder_name = df['COMPOUND_NAME'].str.replace(' ', '_').str.replace(',', '%2C').str.replace('%', '%25').str.replace('+', '%2B')
+    # df.insert(df.columns.get_loc('COMPOUND_NAME') + 1, "compound_folder_name", compound_folder_name)   
+
+    # compound_name_clean = df['COMPOUND_NAME'].str.replace(r'[^a-zA-Z0-9]', '_', regex=True) 
+    # df.insert(df.columns.get_loc('COMPOUND_NAME') + 1, "compound_name_clean", compound_name_clean)
+
+
+    # Use EXP_ID,GROUP_ID,INDIVIDUAL_ID to create a one experimental subject's UID. This is unique to the subject within TG-GATES
+    # The experiment ID is a 4 digit number for these in vivo samples are between 0040 and 5000. Group ids are in double digits, and individual ids are in single digits. 
+    subject_organ_UID = df['EXP_ID'].astype(str).str.zfill(4) + '_' + df['GROUP_ID'].astype(str).str.zfill(2) + '_' + df['INDIVIDUAL_ID'].astype(str)
+    df.insert(0, "subject_UID", subject_organ_UID)
+
+    # add a subject organ ID, using the first letter of the organ to indicate the organ
+    subject_organ_UID = df['subject_UID'].astype(str) + '_' + df['ORGAN'].astype(str).str[0]
+    df.insert(1, "subject_organ_UID", subject_organ_UID)
+
+    # Get the filename from the file path
+    filename = file_path.split('/')[-1].split('.')[0]
+
+    # The different raw files have different ~issues~ so here I coded specific fixes for each file
+    if filename == "open_tggates_pathological_image":
+
+        # Get the slide id from file location
+        slide_id = df['FILE_LOCATION'].str.split('/').str[-1].str.split('.').str[0]
+        df.insert(0, "slide_id", slide_id)
+
+        # Modify the location to the local location
+        df['FILE_LOCATION'] = df['FILE_LOCATION'].str.replace('ftp://ftp.biosciencedbc.jp/archive/open-tggates-pathological-images/LATEST/images/', 
+                                                              '/data/RBS_PA_CPGARCHIVE/archives/toxicology/open-tg-gates/images/')
+
+    if output_dir is not None:
+
+        # Save the cleaned file to the output directory
+        output_file_path = f"{output_dir}/{filename}_cleaned.csv"
+    else:
+        output_file_path = file_path.replace('.csv', '_cleaned.csv')
+
+
+    ### Get list of animals with multiple slides ###
+
+    # Get which subject UUID appears more than once
+    subject_organ_UID_counts = df['subject_organ_UID'].value_counts()
+
+    # Get the subject UUIDs that appear more than once
+    multiple_slides_subjects = subject_organ_UID_counts[subject_organ_UID_counts > 1].index.tolist()
+
+    # Get the rows for those subjects
+    multiple_slides_df = df[df['subject_organ_UID'].isin(multiple_slides_subjects)]
+
+    # Get the slide IDs for those subjects
+    multiple_slides_slide_ids = multiple_slides_df['subject_organ_UID'].unique()
+
+    dupes = []
+    incorrect = []
+
+    # Check if slides from the same animal have other values
+    for subject_organ_UID in multiple_slides_slide_ids:
+
+        # Get the rows for that subject
+        subject_rows = df[df['subject_organ_UID'] == subject_organ_UID]
+
+        # Check if the other values are the same except slide_id, capture num, and slide location
+        for col in subject_rows.columns:
+            if col not in ['slide_id', 'FILE_LOCATION', 'subject_UID', 'subject_organ_UID','CAPTURE_NO']:
+                # Check if the column has different values
+                if subject_rows[col].nunique() > 1:
+                    print(f"Subject {subject_organ_UID} has different values in column {col}.")
+                    incorrect.append(subject_organ_UID)
+
+                dupes.append(subject_organ_UID)
+
+    dupes = set(dupes)
+    incorrect = set(incorrect)
+
+    print(f"Subjects with dupes: {len(dupes)}")
+    print(f"Subjects with incorrect values: {len(incorrect)}")
+
+    # Get dataframe with duplicates based on the slide_organ_IDs
+    multiple_slides_df = df[df['subject_organ_UID'].isin(dupes)]  
+    multiple_slides_df.to_csv(output_file_path.replace('.csv','_multiple_WSIs.csv'), index=False)
+
+    multiple_slides_df = df[df['subject_organ_UID'].isin(incorrect)]  
+    multiple_slides_df.to_csv(output_file_path.replace('.csv','_incorrect.csv'), index=False)
+
+
+
+    df_clean = df[~df['subject_organ_UID'].isin(incorrect)]
+
+    # # Save cleaned file
+
+    # if save:
+    #     # df.to_csv(output_file_path, index=False)
+    #     print(f"Cleaned file saved to: {output_file_path}")
+
+    return df
+ 
+def create_master_list(raw_files_dir):
+    """
+    Here the expectation is that all the raw files are downloaded, unzipped, and out in the same directory.
+    These are the ones we need:
+    - open_tggates_pathological_image.csv
+
+    """
+
+    # First get "pathological image". This has one WSI per row.  For the output file, 
+    # we will maintain this convention: ** one row = one unique WSI **.
+    WSIs_df = clean_raw_metadata_csv(file_path=f"{raw_files_dir}/open_tggates_pathological_image.csv", save=False)
+
+    # The pathological findings file has one *finding* per row. Each finding has the 
+    # following attributes: "FINDING_TYPE,TOPOGRAPHY_TYPE,GRADE_TYPE,SP_FLG".
+    # Note that findings are not linked to WSI but rather to the animal-organ as a whole (FML).
+    # We will organize these in lists grouped by finding. e.g., an animal with multiple 
+    # findings would have: "["hypertrophy", "Peripheral", "slight", 1], ["deposit, glycogen", "Central", "slight", 1]"
+    findings_df = clean_raw_metadata_csv(file_path=f"{raw_files_dir}/open_tggates_pathology.csv", save=False)
+
+    findings = []
+    # go through each animal-organ and find its associated findings
+    # for i in WSIs_df['slide_id']:
+
+    # BREADCRUMBS: i just found out that the smallest unit is the animal-organ, not the WSI
+    # I am trying to decide whether to include the organ (k or l) in the UID
+    # I am also trying to decide whether to make the master list have one row per WSI or one row per animal-organ
+    # to decide I have to think of the down the line processing, list them out and see which is best
+    # I think WSI would be better in some ways, but then I am am sort of hiding that I am just distributing animal-organ findings over all slides
+    # one important piece of information is that the WSIs are numbered (1/2, 2/2 etc) and I remember something in the TG-GATES paper indicating that the 
+    # the first slide is the one where a finding was found then the following are added, but not sure how to add that info...
+    # unfortunately, I might have to pack each animal's slides into one and redo the feature extraction for those....
+    # or I need to concatenate the slides. otherwise I'm not super sure hwo to proceed. Maybe worth asking Geert.
+    # I should also re-read the papers that used TG-GATES to figure out how they handled this.
+
+
+    
+
+
+filepath = "/Volumes/RBS_PA_CPGARCHIVE/archives/toxicology/open-tg-gates/metadata_SD/raw/open_tggates_pathological_image.csv"
+# filepath = "/Volumes/RBS_PA_CPGARCHIVE/archives/toxicology/open-tg-gates/metadata_SD/raw/open_tggates_pathology.csv"
+clean_raw_metadata_csv(file_path=filepath, output_dir="/Volumes/RBS_PA_CPGARCHIVE/archives/toxicology/open-tg-gates/metadata_SD/")
+
+
+
